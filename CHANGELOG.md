@@ -1,0 +1,40 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- Two installer variants produced by the CI release workflow: CPU (canonical, auto-update capable) and CUDA (NVIDIA GPU acceleration via cuda-whisper + cuda-llama + cuda-onnx features)
+- `cuda` Cargo meta-feature enabling all three CUDA sub-features at once
+- Auto-updater via GitHub Releases with `tauri-plugin-updater`
+- CI release workflow signing artifacts with `TAURI_SIGNING_PRIVATE_KEY`
+- Internationalization (i18n) infrastructure with English, French and Spanish locales
+- Language selector in the Settings panel
+- Prompt detection from trigger words in transcripts (parity with VoiceInk `PromptDetectionService`)
+- Multi-format clipboard backup/restore on Windows (images, files, HTML, RTF)
+- `transcription/engine.rs` module mirroring VoiceInk `VoiceInkEngine.swift`
+- HTTP timeout helpers for all batch cloud providers + WebSocket handshake timeout for streaming providers
+- URL validator for user-configurable endpoints (Custom OpenAI-compat, Ollama)
+- `source:changed` event replacing UI polling in the AI Models panel
+- Unit tests for hotkeys state machine, cloud catalog, enhancement helpers and prompt detection (69 tests total)
+
+### Changed
+- Restrictive CSP on the webview (`default-src 'self'` baseline with targeted allowances)
+- `parking_lot::Mutex` unified across the backend (previously one site used `std::sync::Mutex`)
+- `TranscriptionSource` type extracted to `src/lib/tauri.ts` (was duplicated in two panels)
+- README rewritten in English with VoiceInk-inspired structure
+
+### Removed
+- Unused `thiserror` dependency
+
+### Fixed
+- Toggle mode hotkey never ending a recording via press (now sets hands-free on release, matching VoiceInk)
+- Cloud transcription providers hanging indefinitely on network failure (120s timeout + 15s connect timeout)
+
+## [0.1.0] - 2026-04-17
+
+Initial internal release. First installer.

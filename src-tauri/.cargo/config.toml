@@ -1,0 +1,11 @@
+# Configuration Cargo propre a Parla.
+#
+# /FORCE:MULTIPLE : llama-cpp-sys-2 et whisper-rs-sys embarquent tous les deux
+# le runtime ggml (issue ggml-org/llama.cpp#9267, ggml-org/whisper.cpp#1887).
+# La duplication des symboles ggml-quants fait echouer le link Windows. Les
+# fonctions en conflit sont des quantize_row_* bas niveau dont l'ABI est
+# stable entre versions ; le linker garde la premiere definition. Ce flag
+# disparaitra le jour ou l'ecosysteme Rust partagera une lib ggml commune.
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-args=/FORCE:MULTIPLE /IGNORE:4006 /IGNORE:4088"]

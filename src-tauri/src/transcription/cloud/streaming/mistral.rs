@@ -1,0 +1,214 @@
+// Mistral Voxtral realtime.
+//
+// Reference VoiceInk : LLMkit MistralStreamingClient.swift.
+// WSS : wss://api.mistral.ai/v1/audio/transcriptions/realtime?model=voxtral-mini-transcribe-realtime-2602
+// Header : Authorization: Bearer
+// Handshake : {"type":"session.created"}.
+// Apres handshake : envoyer session.update avec audio_format pcm_s16le 16000.
+// Audio : {"type":"input_audio.append","audio":"<b64>"}.
+// Commit : {"type":"input_audio.end"}.
+// Events :
+//   - transcription.text.delta -> accumuler + Partial(accumule)
+//   - transcription.done -> Committed(accumule) + reset
+//   - transcription.language / session.updated -> ignore
+//   - error -> Error (extract error.message/error.detail/error/message)
+
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
+use futures_util::{SinkExt, StreamExt};
+use serde_json::{json, Value};
+use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+
+use super::session::{
+    connect_ws, drain_ws_messages, i16_to_base64, StreamingChannels, StreamingConfig,
+    StreamingEvent, StreamingProvider,
+};
+
+pub struct MistralStreaming;
+
+#[async_trait]
+impl StreamingProvider for MistralStreaming {
+    fn id(&self) -> &'static str {
+        "mistral"
+    }
+
+    async fn run(
+        &self,
+        api_key: String,
+        config: StreamingConfig,
+        channels: StreamingChannels,
+        on_event: Box<dyn Fn(StreamingEvent) + Send + Sync>,
+    ) -> Result<String> {
+        // VoiceInk hard-code voxtral-mini-transcribe-realtime-2602
+        // (MistralStreamingProvider L34).
+        let model = if config.model.is_empty() {
+            "voxtral-mini-transcribe-realtime-2602".to_string()
+        } else {
+            config.model.clone()
+        };
+        let url = format!(
+            "wss://api.mistral.ai/v1/audio/transcriptions/realtime?model={}",
+            urlencoding::encode(&model)
+        );
+
+        let mut req = url.into_client_request()?;
+        req.headers_mut()
+            .insert("Authorization", format!("Bearer {api_key}").parse()?);
+
+        let ws_stream = connect_ws(req).await?;
+        let (mut write, mut read) = ws_stream.split();
+
+        // Handshake : attend session.created.
+        loop {
+            match read.next().await {
+                Some(Ok(Message::Text(t))) => {
+                    let json: Value = serde_json::from_str(&t)?;
+                    match json.get("type").and_then(|v| v.as_str()) {
+                        Some("session.created") => break,
+                        Some("error") => {
+                            return Err(anyhow!(
+                                "Mistral handshake: {}",
+                                extract_error(&json)
+                            ));
+                        }
+                        _ => continue,
+                    }
+                }
+                Some(Ok(_)) => continue,
+                Some(Err(e)) => return Err(anyhow!("ws read: {e}")),
+                None => return Err(anyhow!("ws closed during handshake")),
+            }
+        }
+
+        // session.update
+        let update = json!({
+            "type": "session.update",
+            "session": {
+                "audio_format": { "encoding": "pcm_s16le", "sample_rate": 16000 }
+            }
+        });
+        write
+            .send(Message::Text(update.to_string().into()))
+            .await?;
+
+        on_event(StreamingEvent::SessionStarted);
+
+        let StreamingChannels {
+            mut audio_rx,
+            mut finalize_rx,
+        } = channels;
+
+        let mut accumulated = String::new();
+        let mut committed_text = String::new();
+
+        loop {
+            tokio::select! {
+                biased;
+                _ = &mut finalize_rx => {
+                    while let Ok(chunk) = audio_rx.try_recv() {
+                        let msg = json!({ "type": "input_audio.append", "audio": i16_to_base64(&chunk) });
+                        let _ = write.send(Message::Text(msg.to_string().into())).await;
+                    }
+                    let _ = write.send(Message::Text(json!({ "type": "input_audio.end" }).to_string().into())).await;
+                    let final_text = drain(&mut read, &mut accumulated, &mut committed_text, &on_event).await;
+                    let _ = write.close().await;
+                    return Ok(final_text);
+                }
+                chunk = audio_rx.recv() => {
+                    match chunk {
+                        Some(c) => {
+                            let msg = json!({ "type": "input_audio.append", "audio": i16_to_base64(&c) });
+                            if let Err(e) = write.send(Message::Text(msg.to_string().into())).await {
+                                return Err(anyhow!("ws send: {e}"));
+                            }
+                        }
+                        None => return Ok(committed_text),
+                    }
+                }
+                msg = read.next() => {
+                    match msg {
+                        Some(Ok(Message::Text(t))) => handle_text(&t, &mut accumulated, &mut committed_text, &on_event),
+                        Some(Ok(Message::Close(_))) => return Ok(committed_text),
+                        Some(Ok(_)) => {}
+                        Some(Err(e)) => return Err(anyhow!("ws read: {e}")),
+                        None => return Ok(committed_text),
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn drain<S>(
+    read: &mut S,
+    accumulated: &mut String,
+    committed: &mut String,
+    on_event: &(dyn Fn(StreamingEvent) + Send + Sync),
+) -> String
+where
+    S: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    drain_ws_messages(read, std::time::Duration::from_secs(5), |t| {
+        handle_text(t, accumulated, committed, on_event)
+    })
+    .await;
+    if committed.is_empty() && !accumulated.is_empty() {
+        committed.push_str(accumulated);
+    }
+    committed.trim().to_string()
+}
+
+fn handle_text(
+    t: &str,
+    accumulated: &mut String,
+    committed: &mut String,
+    on_event: &(dyn Fn(StreamingEvent) + Send + Sync),
+) {
+    let Ok(json) = serde_json::from_str::<Value>(t) else {
+        return;
+    };
+    match json.get("type").and_then(|v| v.as_str()) {
+        Some("transcription.text.delta") => {
+            if let Some(delta) = json.get("text").and_then(|v| v.as_str()) {
+                accumulated.push_str(delta);
+                on_event(StreamingEvent::Partial {
+                    text: accumulated.clone(),
+                });
+            }
+        }
+        Some("transcription.done") => {
+            if !accumulated.trim().is_empty() {
+                if !committed.is_empty() {
+                    committed.push(' ');
+                }
+                committed.push_str(accumulated.trim());
+                on_event(StreamingEvent::Committed {
+                    text: committed.clone(),
+                });
+                accumulated.clear();
+            }
+        }
+        Some("error") => {
+            on_event(StreamingEvent::Error {
+                message: extract_error(&json),
+            });
+        }
+        _ => {}
+    }
+}
+
+fn extract_error(json: &Value) -> String {
+    if let Some(msg) = json.pointer("/error/message").and_then(|v| v.as_str()) {
+        return msg.to_string();
+    }
+    if let Some(msg) = json.pointer("/error/detail").and_then(|v| v.as_str()) {
+        return msg.to_string();
+    }
+    if let Some(msg) = json.get("error").and_then(|v| v.as_str()) {
+        return msg.to_string();
+    }
+    if let Some(msg) = json.get("message").and_then(|v| v.as_str()) {
+        return msg.to_string();
+    }
+    "erreur provider".to_string()
+}

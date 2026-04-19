@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # CPU variant - canonical build. Produces the signed installers + the
+  # updater artifacts (latest.json + .sig files). The Tauri updater in the
+  # installed app points to this job's latest.json.
+  cpu:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: cpu
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Enable updater artifacts
+        shell: pwsh
+        run: |
+          $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $conf.bundle.createUpdaterArtifacts = $true
+          $conf | ConvertTo-Json -Depth 20 | Set-Content src-tauri/tauri.conf.json -Encoding UTF8
+
+      - name: Build + sign + bundle (CPU)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Parla ${{ github.ref_name }}"
+          releaseBody: |
+            See the [changelog](https://github.com/LitteRabbit-37/Parla/blob/main/CHANGELOG.md) for details.
+
+            This release ships only the CPU variant. `Parla_x.y.z_x64-setup.exe` runs Whisper, Parakeet and llama.cpp on CPU and works on every Windows 10 / 11 machine. Auto-updater is wired via `latest.json` so future releases install themselves.
+
+            Users with an NVIDIA GPU who want CUDA acceleration can build Parla themselves from source - see [BUILDING.md](https://github.com/LitteRabbit-37/Parla/blob/main/BUILDING.md#cuda-build) for the recipe.
+          releaseDraft: true
+          prerelease: false
+          args: --target x86_64-pc-windows-msvc
+
+  # NOTE : GitHub's public windows-latest runner (4 cores, 16 GB, 14 GB
+  # disk) is too small to compile whisper.cpp CUDA + llama.cpp CUDA +
+  # ggml-cuda within the 6h job limit - nvcc + MSBuild oversubscribe the
+  # machine and swap-thrash until the job dies. We ship CPU only from
+  # CI and users who want CUDA build from source on their own GPU box
+  # (cf BUILDING.md section "CUDA build"). If you ever add a self-hosted
+  # runner or bump to GitHub Team's larger runners, the recipe to add
+  # back a cuda job is in the git history (tag v0.1.0 initial attempt).

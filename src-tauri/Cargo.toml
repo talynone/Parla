@@ -1,0 +1,127 @@
+[package]
+name = "parla"
+version = "0.1.0"
+description = "Parla - dictee vocale locale et cloud pour Windows"
+authors = ["Parla contributors"]
+edition = "2021"
+
+[lib]
+name = "parla_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-store = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-process = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+parking_lot = "0.12"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Audio capture WASAPI (via cpal)
+cpal = "0.15"
+hound = "3.5"
+rubato = "0.16"
+ringbuf = "0.4"
+uuid = { version = "1", features = ["v4"] }
+arboard = "3"
+
+# Post-traitement texte
+regex = "1"
+fancy-regex = "0.14"
+unicode-segmentation = "1"
+
+# Persistence SQLite (dictionnaire, historique)
+rusqlite = { version = "0.33", features = ["bundled"] }
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+
+# Transcription Whisper locale
+whisper-rs = { version = "0.16", default-features = false }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "multipart", "json"] }
+futures-util = "0.3"
+
+# LLM enhancement embarque (llama.cpp).
+# Build CPU par defaut ; CUDA optionnelle via la feature parla "cuda-llama".
+llama-cpp-2 = "0.1"
+
+# Transcription Parakeet (NVIDIA NeMo TDT) via ONNX Runtime.
+# Les defaults de parakeet-rs activent "cpu" + "ort-defaults" (qui embarque
+# onnxruntime via download-binaries). Acceleration GPU activable via les
+# features Parla "cuda-onnx" (NVIDIA) ou "directml-onnx" (GPU Windows).
+parakeet-rs = "0.3"
+
+# UI Automation pour l'extraction d'URL des navigateurs (Power Mode).
+uiautomation = "0.24"
+
+# Capture de fenetre active (Phase 7 screen context).
+xcap = "0.9"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# Providers cloud
+async-trait = "0.1"
+base64 = "0.22"
+keyring = { version = "3", features = ["windows-native"] }
+urlencoding = "2"
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+
+# Detection GPU NVIDIA (CUDA runtime presence)
+nvml-wrapper = { version = "0.11", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.60", features = [
+  "Win32_Foundation",
+  "Win32_System_DataExchange",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Memory",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_Media_Audio",
+  "Win32_Media_Audio_Endpoints",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Variant",
+  "Win32_Devices_FunctionDiscovery",
+  "Media_Ocr",
+  "Graphics_Imaging",
+  "Storage_Streams",
+  "Foundation_Collections",
+] }
+
+# rustc 1.95 plante (STATUS_ACCESS_VIOLATION) en compilant tokenizers
+# v0.22 a opt-level 3 sur Windows MSVC. On baisse l'opt-level juste pour
+# cette crate, ca evite la faute memoire du compilateur sans impact runtime
+# significatif (la lib est utilisee uniquement au load du modele Parakeet).
+[profile.release.package.tokenizers]
+opt-level = 1
+
+[features]
+default = ["gpu-detect"]
+gpu-detect = ["dep:nvml-wrapper"]
+
+# Meta-feature that enables NVIDIA acceleration everywhere. Used by the CUDA
+# build variant in the release workflow. Do NOT enable this by default - the
+# resulting binary requires CUDA 12 runtime DLLs to start and will crash on
+# machines without an NVIDIA driver.
+cuda = ["cuda-whisper", "cuda-llama", "cuda-onnx"]
+
+cuda-whisper = ["whisper-rs/cuda"]
+cuda-llama = ["llama-cpp-2/cuda"]
+cuda-onnx = ["parakeet-rs/cuda"]
+directml-onnx = ["parakeet-rs/directml"]

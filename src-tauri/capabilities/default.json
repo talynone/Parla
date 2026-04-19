@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities pour la fenetre principale Parla",
+  "windows": ["main", "recorder"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "global-shortcut:default",
+    "store:default",
+    "autostart:default",
+    "dialog:default",
+    "updater:default",
+    "process:default",
+    "process:allow-restart",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "core:window:allow-close"
+  ]
+}
