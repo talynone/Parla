@@ -53,6 +53,24 @@ This produces:
 - `src-tauri/target/release/parla.exe` - the standalone binary
 - `src-tauri/target/release/bundle/nsis/Parla_x.y.z_x64-setup.exe` - NSIS installer (the only bundle target we ship; it prompts for data removal on uninstall and lets the user opt out of the desktop shortcut)
 
+## ARM64 build
+
+To build Parla natively for Windows on ARM (Snapdragon X, etc.):
+
+```bash
+rustup target add aarch64-pc-windows-msvc
+npm run tauri build -- --target aarch64-pc-windows-msvc --no-default-features
+```
+
+This produces:
+
+- `src-tauri/target/aarch64-pc-windows-msvc/release/parla.exe` - the standalone binary
+- `src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/Parla_x.y.z_arm64-setup.exe` - NSIS installer
+
+`--no-default-features` disables `gpu-detect` (the `nvml-wrapper` crate) because NVIDIA does not ship `nvml.dll` for Windows ARM64. All other functionality (Whisper, Parakeet, llama.cpp, audio capture, etc.) works natively on ARM64.
+
+The CI workflow `.github/workflows/release.yml` builds the ARM64 variant automatically on GitHub's `windows-11-arm` runner.
+
 ## Cargo features
 
 Parla exposes several Cargo features in `src-tauri/Cargo.toml` that control backend capabilities:
@@ -66,7 +84,7 @@ Parla exposes several Cargo features in `src-tauri/Cargo.toml` that control back
 | `cuda-onnx` | no | Enable the ONNX Runtime CUDA Execution Provider for Parakeet |
 | `directml-onnx` | no | Enable the ONNX Runtime DirectML EP (AMD / Intel GPU) |
 
-The CI workflow `.github/workflows/release.yml` only builds the CPU variant. The GitHub public `windows-latest` runner (4 cores, 16 GB RAM, 14 GB disk) cannot fit the CUDA build of whisper.cpp + llama.cpp + ggml-cuda within the 6 hour job limit - nvcc and MSBuild oversubscribe the machine and swap-thrash until the job dies. If you need CUDA, build it yourself from source with the recipe below.
+The CI workflow `.github/workflows/release.yml` builds CPU variants for both x64 and ARM64. The GitHub public `windows-latest` runner (4 cores, 16 GB RAM, 14 GB disk) cannot fit the CUDA build of whisper.cpp + llama.cpp + ggml-cuda within the 6 hour job limit - nvcc and MSBuild oversubscribe the machine and swap-thrash until the job dies. If you need CUDA, build it yourself from source with the recipe below.
 
 ## CUDA build
 
