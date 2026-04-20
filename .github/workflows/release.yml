@@ -64,6 +64,14 @@ jobs:
           $conf.bundle.createUpdaterArtifacts = $true
           $conf | ConvertTo-Json -Depth 20 | Set-Content src-tauri/tauri.conf.json -Encoding UTF8
 
+      - name: Use Clang for ARM64 native C/C++ (ggml requirement)
+        if: matrix.arch == 'arm64'
+        shell: pwsh
+        run: |
+          echo "CC=clang-cl" >> $env:GITHUB_ENV
+          echo "CXX=clang-cl" >> $env:GITHUB_ENV
+          echo "CMAKE_GENERATOR=Ninja" >> $env:GITHUB_ENV
+
       - name: Build + sign + bundle (CPU ${{ matrix.arch }})
         id: tauri_build
         uses: tauri-apps/tauri-action@v0
