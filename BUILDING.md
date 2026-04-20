@@ -59,7 +59,7 @@ To build Parla natively for Windows on ARM (Snapdragon X, etc.):
 
 ```bash
 rustup target add aarch64-pc-windows-msvc
-npm run tauri build -- --target aarch64-pc-windows-msvc --no-default-features
+npm run tauri build -- --target aarch64-pc-windows-msvc -- --no-default-features
 ```
 
 This produces:
