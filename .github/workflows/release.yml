@@ -64,6 +64,12 @@ jobs:
           $conf.bundle.createUpdaterArtifacts = $true
           $conf | ConvertTo-Json -Depth 20 | Set-Content src-tauri/tauri.conf.json -Encoding UTF8
 
+      - name: Setup MSVC ARM64 developer environment
+        if: matrix.arch == 'arm64'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: arm64
+
       - name: Use Clang for ARM64 native C/C++ (ggml requirement)
         if: matrix.arch == 'arm64'
         shell: pwsh
@@ -71,6 +77,8 @@ jobs:
           echo "CC=clang-cl" >> $env:GITHUB_ENV
           echo "CXX=clang-cl" >> $env:GITHUB_ENV
           echo "CMAKE_GENERATOR=Ninja" >> $env:GITHUB_ENV
+          echo "CFLAGS=--target=aarch64-pc-windows-msvc" >> $env:GITHUB_ENV
+          echo "CXXFLAGS=--target=aarch64-pc-windows-msvc" >> $env:GITHUB_ENV
 
       - name: Build + sign + bundle (CPU ${{ matrix.arch }})
         id: tauri_build
