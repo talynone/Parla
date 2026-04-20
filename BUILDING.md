@@ -57,8 +57,18 @@ This produces:
 
 To build Parla natively for Windows on ARM (Snapdragon X, etc.):
 
-```bash
+### Prerequisites for ARM64
+
+- **Clang/LLVM tools**: In the Visual Studio Installer, under \"Desktop development with C++\", ensure \"C++ Clang Compiler for Windows\" and \"MSBuild support for LLVM toolset\" are checked. The ggml library (used by whisper.cpp and llama.cpp) does not support MSVC on ARM64 — it requires Clang.
+- **Ninja**: Install via `choco install ninja`, or ensure it is available from the Visual Studio installation.
+
+### Build
+
+```powershell
 rustup target add aarch64-pc-windows-msvc
+$env:CC = "clang-cl"
+$env:CXX = "clang-cl"
+$env:CMAKE_GENERATOR = "Ninja"
 npm run tauri build -- --target aarch64-pc-windows-msvc -- --no-default-features
 ```
 
