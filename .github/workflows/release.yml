@@ -30,7 +30,7 @@ jobs:
           - arch: arm64
             runner: windows-11-arm
             rust-target: aarch64-pc-windows-msvc
-            cargo-args: "--no-default-features"
+            cargo-args: "-- --no-default-features"
 
     name: cpu (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
