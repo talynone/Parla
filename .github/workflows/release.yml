@@ -80,6 +80,18 @@ jobs:
           echo "CFLAGS=--target=aarch64-pc-windows-msvc" >> $env:GITHUB_ENV
           echo "CXXFLAGS=--target=aarch64-pc-windows-msvc /EHsc" >> $env:GITHUB_ENV
 
+      - name: Verify Secret Presence
+        shell: bash
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "ERROR: TAURI_SIGNING_PRIVATE_KEY is EMPTY"
+            exit 1
+          else
+            echo "SUCCESS: Secret detected (Length: ${#KEY})"
+          fi
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
       - name: Build + sign + bundle (CPU ${{ matrix.arch }})
         id: tauri_build
         uses: tauri-apps/tauri-action@v0
