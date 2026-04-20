@@ -78,7 +78,7 @@ jobs:
           echo "CXX=clang-cl" >> $env:GITHUB_ENV
           echo "CMAKE_GENERATOR=Ninja" >> $env:GITHUB_ENV
           echo "CFLAGS=--target=aarch64-pc-windows-msvc" >> $env:GITHUB_ENV
-          echo "CXXFLAGS=--target=aarch64-pc-windows-msvc" >> $env:GITHUB_ENV
+          echo "CXXFLAGS=--target=aarch64-pc-windows-msvc /EHsc" >> $env:GITHUB_ENV
 
       - name: Build + sign + bundle (CPU ${{ matrix.arch }})
         id: tauri_build
